@@ -1,4 +1,5 @@
-#!/usr/bin/env python3
+#!/usr/bin/env bash
+
 """Fabric script to delete out-of-date archives."""
 
 from fabric.api import *
