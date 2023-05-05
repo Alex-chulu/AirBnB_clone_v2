@@ -1,25 +1,66 @@
 #!/usr/bin/env bash
 
-# Install Nginx if it's not already installed
-if ! command -v nginx &> /dev/null; then
-    sudo apt-get update
-    sudo apt-get install nginx -y
+ME=$(whoami)
+WEB_STATIC_ROOT=/data/web_static
+
+# Check if running with sudo or root
+if [ "$EUID" -ne 0 ]
+  then echo "Please run as root"
+  exit
 fi
 
-# Create the necessary directories if they don't already exist
-sudo mkdir -p /data/web_static/{releases/test,shared}
+# Install Nginx if not already installed
+if ! command -v nginx &> /dev/null
+then
+  echo "Installing Nginx..."
+  apt-get -y update
+  apt-get -y install nginx
+fi
 
-# Create a fake HTML file in /data/web_static/releases/test/
-sudo echo "<html><head></head><body>Hello World!</body></html>" > /data/web_static/releases/test/index.html
+# Create required directories
+echo "Creating folders..."
+mkdir -p $WEB_STATIC_ROOT/releases
+mkdir -p $WEB_STATIC_ROOT/shared
+mkdir -p $WEB_STATIC_ROOT/releases/test
 
-# Create or update the symbolic link
-sudo ln -sf /data/web_static/releases/test/ /data/web_static/current
+# Create fake HTML file for testing
+echo "<html><head></head><body><p>Nginx web server is running!</p></body></html>" > $WEB_STATIC_ROOT/releases/test/index.html
 
-# Give ownership of /data/ to the ubuntu user and group recursively
-sudo chown -R ubuntu:ubuntu /data/
+# Create symbolic link and give ownership to ubuntu
+echo "Creating symbolic link..."
+ln -fs $WEB_STATIC_ROOT/releases/test $WEB_STATIC_ROOT/current
+chown -R $ME:$ME $WEB_STATIC_ROOT
+chown -R www-data:www-data $WEB_STATIC_ROOT/current
 
-# Update the Nginx configuration file
-sudo sed -i '/listen 80 default_server;/a \\n\tlocation /hbnb_static {\n\t\talias /data/web_static/current/;\n\t}' /etc/nginx/sites-available/default
+# Update Nginx configuration file
+echo "Updating Nginx configuration..."
+SITENAME=mydomainname.tech
+CONFIG_FILE=/etc/nginx/sites-available/$SITENAME
+echo "server {
+    listen 80;
+    listen [::]:80 default_server;
 
-# Restart Nginx to apply changes
-sudo service nginx restart
+    root /var/www/html;
+    index index.html index.htm index.nginx-debian.html;
+
+    server_name $SITENAME www.$SITENAME;
+
+    location /hbnb_static {
+        alias $WEB_STATIC_ROOT/current;
+        autoindex off;
+    }
+
+    error_page 404 /404.html;
+    location = /404.html {
+        internal;
+        root /var/www/html;
+    }
+
+    error_page 500 502 503 504 /50x.html;
+    location = /50x.html {
+        internal;
+        root /var/www/html;
+    }
+}" > $CONFIG_FILE
+
+# Create symlink
